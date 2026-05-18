@@ -1,0 +1,27 @@
+{
+  "name": "jhaemassets",
+  "id": "jhaemassets",
+  "description": "AEM Assets Workfront UI",
+  "version": "0.0.1",
+  "detailsSidePanels": [
+    {
+      "tooltip": "Josh's Side Panel",
+      "title": "JH Side Panel",
+      "icon": "Airplane",
+      "id": "joshs-side-panel",
+      "componentName": "PanelJoshsSidePanel"
+    }
+  ],
+  "actionBarActions": [
+    {
+      "label": "Send to Workfront",
+      "icon": "Airplane",
+      "needsModal": true,
+      "modalTitle": "Workfront Project ID",
+      "modalType": "modal",
+      "modalSize": "M",
+      "id": "sendtoworkfront",
+      "componentName": "ModalSendtoworkfront"
+    }
+  ]
+}

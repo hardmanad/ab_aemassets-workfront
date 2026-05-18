@@ -1,0 +1,32 @@
+{
+  "project": {
+    "id": "",
+    "name": "",
+    "title": "",
+    "org": {
+      "id": "",
+      "name": "",
+      "ims_org_id": ""
+    },
+    "workspace": {
+      "id": "",
+      "name": "",
+      "title": "",
+      "action_url": "",
+      "app_url": "",
+      "details": {
+        "credentials": [],
+        "services": [],
+        "events": {
+          "registrations": []
+        },
+        "mesh": {}
+      },
+      "log_forwarding": {
+        "new_relic": {
+          "base_uri": ""
+        }
+      }
+    }
+  }
+}

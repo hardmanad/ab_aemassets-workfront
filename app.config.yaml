@@ -1,0 +1,36 @@
+extensions:
+  aem/assets/details/1:
+    $include: src/aem-assets-details-1/ext.config.yaml
+    runtimeManifest:
+      packages:
+        jhaemassets:
+          license: Apache-2.0
+          actions:
+            aemDocsToWorkfront:
+              function: src/aem-assets-details-1/actions/aemDocsToWorkfront/index.js
+              web: 'yes'
+              runtime: nodejs:22
+              inputs:
+                LOG_LEVEL: debug
+                documentProviderID: ${DOC_PROVIDER_ID}
+              annotations:
+                require-adobe-auth: false
+                final: true
+            workfrontProjectSearch:
+              function: src/aem-assets-details-1/actions/workfrontProjectSearch/index.js
+              web: 'yes'
+              runtime: nodejs:22
+              inputs:
+                LOG_LEVEL: debug
+              annotations:
+                require-adobe-auth: false
+                final: true
+            wfGetAssetUse:
+              function: src/aem-assets-details-1/actions/wfGetAssetUse/index.js
+              web: 'yes'
+              runtime: nodejs:22
+              inputs:
+                LOG_LEVEL: debug
+              annotations:
+                require-adobe-auth: false
+                final: true
