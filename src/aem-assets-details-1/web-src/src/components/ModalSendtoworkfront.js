@@ -23,6 +23,7 @@ import {
   Content,
   IllustratedMessage
 } from '@adobe/react-spectrum';
+import Alert from '@spectrum-icons/workflow/Alert';
 import Search from '@spectrum-icons/workflow/Search';
 import FolderOpen from '@spectrum-icons/workflow/FolderOpen';
 
@@ -37,7 +38,7 @@ export default function ModalSendtoworkfront() {
   const [imsOrgId, setImsOrgId] = useState('');
   const [colorScheme, setColorScheme] = useState('light');
   const [payload, setPayload] = useState();
-  const [sendToState, setSendToState] = useState({});
+  const [sendError, setSendError] = useState(null);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectSelection, setProjectSelection] = useState('');
   const [projectOptions, setProjectOptions] = useState([]);
@@ -92,12 +93,6 @@ export default function ModalSendtoworkfront() {
       setPayload(payload);
     })()
   }, []);
-
-  useEffect(() => {
-    if (sendToState.status == 'fail') {
-      console.log(`This failed to send: ${sendToState.path}`)
-    }
-  }, [sendToState]);
 
   useEffect(() => {
     // Reset options and search state when search term changes
@@ -186,51 +181,39 @@ export default function ModalSendtoworkfront() {
     guestConnection.host.toast.display({ variant, message });
   }
 
-  function sendToWorkfront(resources, projectID, wfHostname) {
+  async function sendToWorkfront(resources, projectID, wfHostname) {
+    setSendError(null);
     setIsLoading(true);
-    const actionUrl = new URL(allActions['aemDocsToWorkfront']);
 
+    const actionUrl = new URL(allActions['aemDocsToWorkfront']);
     const myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
     myHeaders.append("Authorization", `Bearer ${accessToken}`);
     myHeaders.append("x-gw-ims-org-id", imsOrgId);
 
-    Promise.all(resources.map(async (item) => {
-      const body = JSON.stringify({
-        "wfHostname": wfHostname,
-        "refObjID": projectID,
-        "assetID": item.id,
-        "assetPath": item.path
-      });
+    try {
+      await Promise.all(resources.map(async (item) => {
+        const body = JSON.stringify({
+          "wfHostname": wfHostname,
+          "refObjID": projectID,
+          "assetID": item.id,
+          "assetPath": item.path
+        });
 
-      const requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body: body
-      };
+        const res = await fetch(actionUrl, { method: "POST", headers: myHeaders, body });
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => '');
+          throw new Error(`Server returned ${res.status}${errorText ? ': ' + errorText : ''}`);
+        }
+      }));
 
-      const res = await fetch(actionUrl, requestOptions);
-      const text = await res.text()
-      const content = JSON.parse(text);
-      if (!res.ok) {
-        console.error('Not ok');
-        console.error(content);
-        setSendToState({ 'path': item.path, 'status': 'fail' });
-        //throw new Error('request to ' + apiEndpoint + ' failed with status code ' + res.status)
-      }
-      console.log(`Document ID: ${content.result.documents[0]}`);
-    })
-    ).then(() => {
-      const isFailed = sendToState.status == 'fail';
-      const message = isFailed ? `Failed to send to Workfront` : `Successfully sent to Workfront!`;
-      const variant = isFailed ? 'negative' : 'positive';
       setIsLoading(false);
       closeDialog();
-      displayToast(
-        variant,
-        message
-      );
-    });
+      displayToast('positive', 'Successfully sent to Workfront!');
+    } catch (err) {
+      setIsLoading(false);
+      setSendError(err.message || 'An unexpected error occurred. Please try again.');
+    }
   }
 
   return (
@@ -370,6 +353,28 @@ export default function ModalSendtoworkfront() {
           </View>
         )}
 
+        {sendError && (
+          <View
+            padding="size-200"
+            borderRadius="medium"
+            marginBottom="size-200"
+            UNSAFE_style={{
+              backgroundColor: 'var(--spectrum-global-color-red-100)',
+              border: '1px solid var(--spectrum-global-color-red-500)'
+            }}
+          >
+            <Flex alignItems="center" gap="size-100" marginBottom="size-75">
+              <Alert size="S" color="negative" />
+              <Text UNSAFE_style={{ color: 'var(--spectrum-global-color-red-900)', fontWeight: 'bold' }}>
+                Failed to send to Workfront
+              </Text>
+            </Flex>
+            <Text UNSAFE_style={{ color: 'var(--spectrum-global-color-red-900)', fontSize: '13px' }}>
+              {sendError}
+            </Text>
+          </View>
+        )}
+
         <Divider size="S" marginBottom="size-200" />
 
         {/* Action Buttons */}
@@ -379,17 +384,44 @@ export default function ModalSendtoworkfront() {
               <ProgressCircle aria-label="Sending to Workfront..." isIndeterminate size="S" />
               <Text>Sending to Workfront...</Text>
             </Flex>
+          ) : sendError ? (
+            <ButtonGroup>
+              <Button
+                variant="secondary"
+                onPress={() => closeDialog()}
+              >
+                Close
+              </Button>
+              <Button
+                variant="secondary"
+                onPress={() => {
+                  setSendError(null);
+                  setProjectSelection('');
+                  setProjectSearch('');
+                  setProjectOptions([]);
+                  setHasSearched(false);
+                }}
+              >
+                Change Project
+              </Button>
+              <Button
+                variant="accent"
+                onPress={() => sendToWorkfront(payload.resources, projectSelection, wfHostname)}
+              >
+                Try Again
+              </Button>
+            </ButtonGroup>
           ) : (
             <ButtonGroup>
-              <Button 
-                variant="secondary" 
+              <Button
+                variant="secondary"
                 onPress={() => closeDialog()}
               >
                 Cancel
               </Button>
-              <Button 
-                variant="accent" 
-                onPress={() => sendToWorkfront(payload.resources, projectSelection, wfHostname)} 
+              <Button
+                variant="accent"
+                onPress={() => sendToWorkfront(payload.resources, projectSelection, wfHostname)}
                 isDisabled={!projectSelection || isLoading}
               >
                 Send to Workfront
