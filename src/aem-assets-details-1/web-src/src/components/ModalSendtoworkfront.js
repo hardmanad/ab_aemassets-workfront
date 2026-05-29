@@ -12,8 +12,7 @@ import {
   Provider,
   defaultTheme,
   Text,
-  ComboBox,
-  Item,
+  TextField,
   ButtonGroup,
   Button,
   View,
@@ -41,42 +40,13 @@ export default function ModalSendtoworkfront() {
   const [sendError, setSendError] = useState(null);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectSelection, setProjectSelection] = useState('');
+  const [selectedProjectName, setSelectedProjectName] = useState('');
   const [projectOptions, setProjectOptions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const projectSearchSeq = useRef(0);
-  
-  // ref to the ComboBox root so we can imperatively open it (workaround for async items)
-  const comboRootRef = useRef(null);
-
-  // prev options count to detect empty -> populated transition
-  const prevOptionsCountRef = useRef(0);
-
-  const openComboMenu = () => {
-    const root = comboRootRef.current;
-    if (!root) return;
-
-    // Spectrum renders a combobox role / input inside the component
-    const el = root.querySelector('[role="combobox"]') || root.querySelector('input');
-    if (!el) return;
-
-    // only open if input is focused
-    if (document.activeElement !== el) return;
-
-    // dispatch ArrowDown to force the menu open when items arrived async
-    el.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'ArrowDown',
-        code: 'ArrowDown',
-        keyCode: 40,
-        which: 40,
-        bubbles: true
-      })
-    );
-  };
-
+  const justSelectedRef = useRef(false);
 
   const wfHostname = 'bilbroug.my.workfront.adobe.com';
 
@@ -95,83 +65,58 @@ export default function ModalSendtoworkfront() {
   }, []);
 
   useEffect(() => {
-    // Reset options and search state when search term changes
-    if (projectSearch.length < 3) {
+    if (justSelectedRef.current) {
+      justSelectedRef.current = false;
+      return;
+    }
+    if (projectSearch.length < 3 || !accessToken) {
       setProjectOptions([]);
       setHasSearched(false);
-      setProjectMenuOpen(false);
       return;
     }
 
-    // Only search if we have 3+ characters
-    if (projectSearch.length >= 3 && accessToken) {
+    const mySeq = ++projectSearchSeq.current;
+
+    const timer = setTimeout(async () => {
       setIsSearching(true);
 
-      // sequence guard so older responses don't win
-      const mySeq = ++projectSearchSeq.current;
-
       const actionUrl = new URL(allActions['workfrontProjectSearch']);
-
       const myHeaders = new Headers();
       myHeaders.append("Content-Type", "application/json");
       myHeaders.append("Authorization", `Bearer ${accessToken}`);
       myHeaders.append("x-gw-ims-org-id", imsOrgId);
 
-      const body = JSON.stringify({
-        wfHostname: wfHostname,
-        searchTerm: projectSearch
-      });
-
-      const requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body
-      };
-
-      fetch(actionUrl, requestOptions)
-        .then(projectSearchResults => projectSearchResults.json())
-        .then(projects => {
-          // ignore stale responses
-          if (mySeq !== projectSearchSeq.current) return;
-
-          const items = (projects || []).map(project => ({
-            ID: project.ID,
-            name: project.name
-          }));
-
-          setProjectOptions(items);
-          setHasSearched(true);
-
-          // ✅ Open dropdown immediately when results arrive (if still searching 3+ chars)
-          setProjectMenuOpen(items.length > 0 && projectSearch.length >= 3);
-        })
-        .catch(err => {
-          if (mySeq !== projectSearchSeq.current) return;
-
-          console.error(`Error fetching projects: ${err}`);
-          setProjectOptions([]);
-          setHasSearched(true);
-          setProjectMenuOpen(false);
-        })
-        .finally(() => {
-          // only stop loading for the latest request
-          if (mySeq === projectSearchSeq.current) setIsSearching(false);
+      try {
+        const res = await fetch(actionUrl, {
+          method: "POST",
+          headers: myHeaders,
+          body: JSON.stringify({ wfHostname, searchTerm: projectSearch })
         });
-    }
+        if (mySeq !== projectSearchSeq.current) return;
+
+        const projects = await res.json();
+        if (mySeq !== projectSearchSeq.current) return;
+
+        const items = (projects || []).map(project => ({
+          ID: project.ID,
+          name: project.name,
+          esmID: project.esmID || null
+        }));
+
+        setProjectOptions(items);
+        setHasSearched(true);
+      } catch (err) {
+        if (mySeq !== projectSearchSeq.current) return;
+        console.error(`[search] error seq=${mySeq}:`, err);
+        setProjectOptions([]);
+        setHasSearched(true);
+      } finally {
+        if (mySeq === projectSearchSeq.current) setIsSearching(false);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, [projectSearch, accessToken, imsOrgId]);
-
-  // open the combobox imperatively when options transition from 0 -> >0
-  useEffect(() => {
-    const prev = prevOptionsCountRef.current;
-    const next = projectOptions.length;
-
-    if (prev === 0 && next > 0 && projectSearch.length >= 3 && !isSearching) {
-      // let React/Spectrum render the new items, then trigger open
-      setTimeout(() => openComboMenu(), 0);
-    }
-
-    prevOptionsCountRef.current = next;
-  }, [projectOptions, projectSearch, isSearching]);
 
   function closeDialog() {
     guestConnection.host.modal.closeDialog();
@@ -243,41 +188,68 @@ export default function ModalSendtoworkfront() {
         {/* Search and Selection Section */}
         <View marginBottom="size-200">
           <Flex direction="column" gap="size-200">
-          <ComboBox
-            ref={comboRootRef}
+          <TextField
               label="Search Workfront Projects"
               placeholder="Type at least 3 characters to search..."
-              description="Search by project name"
-              inputValue={projectSearch}
-              onInputChange={(value) => {
+              value={projectSearch}
+              onChange={(value) => {
                 setProjectSearch(value);
-
-                // reset selection when typing less than 3 chars
                 if (value.length < 3) {
                   setProjectSelection('');
-                  setProjectMenuOpen(false);
-                } else {
-                  // keep it open while typing if we already have results
-                  if (projectOptions.length > 0) setProjectMenuOpen(true);
+                  setSelectedProjectName('');
                 }
               }}
-              onSelectionChange={(key) => {
-                setProjectSelection(key);
-                const selectedItem = projectOptions.find(o => o.ID === key);
-                if (selectedItem) setProjectSearch(selectedItem.name);
-
-                // close menu after selection (optional but typical)
-                setProjectMenuOpen(false);
-              }}
               isDisabled={isLoading}
-              items={projectOptions}
               width="100%"
-              menuTrigger="input"
-              isOpen={projectMenuOpen}
-              onOpenChange={setProjectMenuOpen}
-            >
-              {(item) => <Item key={item.ID}>{item.name}</Item>}
-            </ComboBox>
+              autoComplete="off"
+            />
+            {projectOptions.length > 0 && (
+              <View
+                backgroundColor="gray-50"
+                borderRadius="medium"
+                UNSAFE_style={{
+                  border: '1px solid var(--spectrum-global-color-gray-400)',
+                  maxHeight: '250px',
+                  overflowY: 'auto'
+                }}
+              >
+                {projectOptions.map(item => (
+                  <div
+                    key={item.ID}
+                    onClick={() => {
+                      if (item.esmID) return;
+                      justSelectedRef.current = true;
+                      setProjectSelection(item.ID);
+                      setSelectedProjectName(item.name);
+                      setProjectSearch(item.name);
+                      setProjectOptions([]);
+                      setHasSearched(false);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: item.esmID ? 'not-allowed' : 'pointer',
+                      borderBottom: '1px solid var(--spectrum-global-color-gray-200)',
+                      opacity: item.esmID ? 0.6 : 1,
+                      lineHeight: '1.4',
+                      userSelect: 'none'
+                    }}
+                    onMouseEnter={e => {
+                      if (!item.esmID) e.currentTarget.style.backgroundColor = 'var(--spectrum-global-color-gray-200)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <div>{item.name}</div>
+                    {item.esmID && (
+                      <div style={{ fontSize: '11px', color: 'var(--spectrum-global-color-gray-600)', fontStyle: 'italic' }}>
+                        (ESM projects not yet supported)
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </View>
+            )}
 
             {/* Show character count hint */}
             {projectSearch.length > 0 && projectSearch.length < 3 && (
@@ -317,14 +289,14 @@ export default function ModalSendtoworkfront() {
             )}
 
             {/* Show selection confirmation */}
-            {projectSelection && (
-              <View 
-                padding="size-200" 
+            {projectSelection && selectedProjectName && (
+              <View
+                padding="size-200"
                 borderRadius="medium"
                 UNSAFE_style={{ backgroundColor: 'var(--spectrum-global-color-green-100)' }}
               >
                 <Text UNSAFE_style={{ color: 'var(--spectrum-global-color-green-900)' }}>
-                  ✓ Project selected: {projectOptions.find(o => o.ID === projectSelection)?.name}
+                  ✓ Project selected: {selectedProjectName}
                 </Text>
               </View>
             )}
@@ -397,6 +369,7 @@ export default function ModalSendtoworkfront() {
                 onPress={() => {
                   setSendError(null);
                   setProjectSelection('');
+                  setSelectedProjectName('');
                   setProjectSearch('');
                   setProjectOptions([]);
                   setHasSearched(false);

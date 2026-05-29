@@ -34,7 +34,7 @@ async function main(params) {
       'Authorization': `Bearer ${token}`,
       'content-type': 'application/json'
     };
-    const wfApiUri = `${params.wfHostname}/attask/api/v20.0`;
+    const wfApiUri = `${params.wfHostname}/attask/api/unsupported`;
 
     async function search() {
       const apiEndpoint = new URL(`https://${wfApiUri}/${params.objCode}/search`);
@@ -52,8 +52,8 @@ async function main(params) {
 
     const searchResults = await search();
     if (!searchResults.ok) {
-      null;
-      throw new Error('request to ' + apiEndpoint + ' failed with status code ' + searchResults.status)
+      const errorBody = await searchResults.text().catch(() => '');
+      throw new Error(`Workfront ${params.objCode} search failed with status ${searchResults.status}: ${errorBody}`)
     }
     const content = await searchResults.json();
 
